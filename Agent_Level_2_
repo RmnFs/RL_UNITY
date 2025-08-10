@@ -6,6 +6,7 @@ using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Integrations.Match3;
 using TMPro;
+using System.IO; // For file writing
 
 
 public class agent : Agent
@@ -27,8 +28,8 @@ public class agent : Agent
 
     [Header("Energy Settings")]
     public float maxEnergy = 100f;
-    public float energyPerPellet = 20f;
-    public float energyDepletionRate = 0.4f; // Energy lost per step
+    public float energyPerPellet = 15f;
+    public float energyDepletionRate = 0.2f; // Energy lost per step
     private float currentEnergy;
 
     //STATS FOR THE UI 
@@ -39,11 +40,15 @@ public class agent : Agent
     //Variables for Level 2_____________________________________
     [Header("Heat Settings")]
     public float maxHeat = 100f;
-    public float heatIncreaseRate = 0.5f; // per unit speed per second
+    public float heatIncreaseRate = 0.1f; // per unit speed per second
     public float heatIncreaseOnPellet = 15f;
-    public float heatCooldownRate = 1f; // per second when idle
+    public float heatCooldownRate = 2f; // per second when idle
     private float currentHeat;
 
+    //For LOGGING CSV DATA
+    [Header("Logging Settings")]
+    private string logFilePath;
+    private int episodeCounter = 0; 
 
 
     public override void Initialize()
@@ -51,7 +56,48 @@ public class agent : Agent
         rb = GetComponent<Rigidbody>();
         envMaterial = env.GetComponent<Renderer>().material;
         originalEnvColor = envMaterial.color;
+
+        //Logging Data
+                    
+            string logsFolder = @"D:\Thesis_Levels\Level_2_Data_Logs";
+
+            // Create folder if it doesn't exist
+            if (!Directory.Exists(logsFolder))
+            {
+                Directory.CreateDirectory(logsFolder);
+            }
+
+            // Create file path
+            logFilePath = Path.Combine(logsFolder, "training_log.csv");
+
+            // If file doesn't exist, create it with headers
+            if (!File.Exists(logFilePath))
+            {
+                File.WriteAllText(logFilePath, "Episode,TotalReward,EnergyUsed,HeatUsed,PelletsCollected,EndReason\n");
+            }
+
+            Debug.Log("Logging to: " + logFilePath);
+        
     }
+
+
+    //Logging Methods
+    private void LogEpisodeData(string endReason)
+{
+    episodeCounter++;
+
+    // Calculate stats
+    float energyUsed = maxEnergy - currentEnergy;
+    float heatUsed = currentHeat; // Final heat at episode end
+    int pelletsCollected = pelletCount - spawnedPelletList.Count;
+    float totalReward = GetCumulativeReward();
+
+    // Create CSV line
+    string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{endReason}\n";
+
+    // Append to file
+    File.AppendAllText(logFilePath, logLine);
+}
 
 
 
@@ -118,9 +164,12 @@ public class agent : Agent
 
     public override void CollectObservations(VectorSensor sensor)
     {
+
+        // Agent's position
         sensor.AddObservation(transform.localPosition);
-        //sensor.AddObservation(target.localRotation);
         sensor.AddObservation(currentEnergy / maxEnergy);
+        sensor.AddObservation(currentHeat / maxHeat);
+        sensor.AddObservation(rb.velocity);
     }
 
 
@@ -142,6 +191,7 @@ public class agent : Agent
         {
             AddReward(-10f); // Same penalty as hitting a wall
             RemovePellet(spawnedPelletList);
+            LogEpisodeData("EnergyDepleted");//LOGGED DATA
             EndEpisode();
         }
 
@@ -177,14 +227,15 @@ public class agent : Agent
             // Small penalty for high heat
             if (currentHeat / maxHeat > 0.8f)
             {
-                AddReward(-0.1f);
+                AddReward(-5f);
             }
 
             // Overheat check
             if (currentHeat >= maxHeat)
             {
-                AddReward(-10f);
+                AddReward(-50f);
                 RemovePellet(spawnedPelletList);
+                LogEpisodeData("Overheat");
                 EndEpisode();
             }
    
@@ -247,6 +298,7 @@ public class agent : Agent
                 
                 RemovePellet(spawnedPelletList);
                 AddReward(5f);
+                LogEpisodeData("AllPelletsCollected");
                 EndEpisode();
             }
         }
@@ -254,7 +306,8 @@ public class agent : Agent
         {
             envMaterial.color =Color.red;
             RemovePellet(spawnedPelletList);
-            AddReward(-10f);
+            AddReward(-50f);
+            LogEpisodeData("WallCollision");
             EndEpisode();
         }
     }
