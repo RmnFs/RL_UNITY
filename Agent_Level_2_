@@ -29,7 +29,7 @@ public class agent : Agent
     [Header("Energy Settings")]
     public float maxEnergy = 100f;
     public float energyPerPellet = 15f;
-    public float energyDepletionRate = 0.2f; // Energy lost per step
+    public float energyDepletionRate = 0.5f; // Energy lost per step
     private float currentEnergy;
 
     //STATS FOR THE UI 
@@ -71,10 +71,9 @@ public class agent : Agent
             logFilePath = Path.Combine(logsFolder, "training_log.csv");
 
             // If file doesn't exist, create it with headers
-            if (!File.Exists(logFilePath))
-            {
-                File.WriteAllText(logFilePath, "Episode,TotalReward,EnergyUsed,HeatUsed,PelletsCollected,EndReason\n");
-            }
+            // Always overwrite the file at the start of a run
+            File.WriteAllText(logFilePath, "Episode,TotalReward,EnergyUsed,HeatUsed,PelletsCollected,EndReason\n");
+            
 
             Debug.Log("Logging to: " + logFilePath);
         
@@ -178,6 +177,9 @@ public class agent : Agent
     public override void OnActionReceived(ActionBuffers actions)
     {
 
+        AddReward(0.001f); //Incentive to Survive
+        
+        
         //Energy Management
 
         currentEnergy -= energyDepletionRate * Time.fixedDeltaTime;
@@ -185,11 +187,11 @@ public class agent : Agent
 
         if (currentEnergy / maxEnergy < 0.3f)
         {
-            AddReward(-0.001f); // Make this small so it doesn't discourage survival
+            AddReward(-0.005f); // Make this small so it doesn't discourage survival
         }
         if (currentEnergy <= 0f)
         {
-            AddReward(-10f); // Same penalty as hitting a wall
+            AddReward(-50f); // Same penalty as hitting a wall
             RemovePellet(spawnedPelletList);
             LogEpisodeData("EnergyDepleted");//LOGGED DATA
             EndEpisode();
@@ -204,13 +206,17 @@ public class agent : Agent
         //transform.Rotate(0f, moveRotate * moveSpeed, 0f, Space.Self);  THIS WAS BEFORE THE SCALE CHANGE
         transform.Rotate(0f, moveRotate * rotationSpeed * Time.deltaTime, 0f, Space.Self);
 
-
+         // Encourage movement slightly (prevents standing still)
+        if (Mathf.Abs(moveForward) > 0.05f || Mathf.Abs(moveRotate) > 0.05f)
+        {
+            AddReward(0.0005f); // tiny reward for moving
+        }
 
 
         //Level 2 Heat Management
         float speed = Mathf.Abs(moveForward) * moveSpeed;
 
-            if (speed > 0.1f)
+            if (speed > 1f)
             {
                 // Heat increases with speed
                 currentHeat += heatIncreaseRate * speed * Time.fixedDeltaTime;
@@ -224,10 +230,13 @@ public class agent : Agent
             
             currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
 
+            // Small proportional penalty for high heat
+            AddReward(-(currentHeat / maxHeat) * 0.0005f);
+
             // Small penalty for high heat
             if (currentHeat / maxHeat > 0.8f)
             {
-                AddReward(-5f);
+                AddReward(-.005f);
             }
 
             // Overheat check
@@ -262,6 +271,10 @@ public class agent : Agent
             
             heatText.text = "Heat: " + currentHeat.ToString("F1");
         }
+
+        
+
+   
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -284,7 +297,7 @@ public class agent : Agent
 
             spawnedPelletList.Remove(other.gameObject);
             Destroy(other.gameObject);
-            AddReward(10f);
+            AddReward(15f);
             //envMaterial.color = Color.green;
 
 
@@ -297,7 +310,7 @@ public class agent : Agent
             {
                 
                 RemovePellet(spawnedPelletList);
-                AddReward(5f);
+                AddReward(50f);
                 LogEpisodeData("AllPelletsCollected");
                 EndEpisode();
             }
