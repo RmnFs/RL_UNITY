@@ -1,0 +1,434 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using Unity.MLAgents;
+using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Sensors;
+using Unity.MLAgents.Integrations.Match3;
+using TMPro;
+using System.IO; // For file writing
+
+
+public class agent : Agent
+{
+    [SerializeField] private Transform target;
+    public int pelletCount = 6;
+    public GameObject food;
+    public GameObject coolingPellet; //LEVEL 3 ADDED Cooling Pellet
+    public int coolingPelletCount = 3;
+    private int coolingPelletsCollected = 0; // For logging
+    [SerializeField] private List<GameObject> spawnedPelletList = new List<GameObject>();
+    //Environment cariavke
+    [SerializeField] private Transform environmentLocation;
+    Material envMaterial;
+    public GameObject env;
+    private Color originalEnvColor;
+
+    public float moveSpeed = 12f;
+    public float rotationSpeed = 100f;
+    private int actionDelaySteps = 0; //For preventing tipping Over 
+
+    private Rigidbody rb;
+
+    [Header("Energy Settings")]
+    public float maxEnergy = 100f;
+    public float energyPerPellet = 15f;
+    public float energyDepletionRate = 5f; // Energy lost per step is o.5 at stable lvl 2
+    private float currentEnergy;
+
+    //STATS FOR THE UI 
+    [Header("UI Settings")]
+    public TextMeshProUGUI energyText;
+    public TextMeshProUGUI heatText;
+
+    //Variables for Level 2_____________________________________
+    [Header("Heat Settings")]
+    public float maxHeat = 100f;
+    public float heatIncreaseRate = 0.4f; // per unit speed per second was 0.1
+    public float heatIncreaseOnPellet = 15f;
+    public float heatCooldownRate = 2f; // per second when idle was 2 at stable
+    private float currentHeat;
+
+    //For LOGGING CSV DATA
+    [Header("Logging Settings")]
+    private string logFilePath;
+    private int episodeCounter = 0; 
+
+
+    public override void Initialize()
+    {
+        rb = GetComponent<Rigidbody>();
+        envMaterial = env.GetComponent<Renderer>().material;
+        originalEnvColor = envMaterial.color;
+
+        //Logging Data
+                    
+            string logsFolder = @"D:\Thesis_Levels\Level_3_Data_Logs";
+
+            // Create folder if it doesn't exist
+            if (!Directory.Exists(logsFolder))
+            {
+                Directory.CreateDirectory(logsFolder);
+            }
+
+            // Create file path
+            logFilePath = Path.Combine(logsFolder, "training_log.csv");
+
+            // If file doesn't exist, create it with headers
+            // Always overwrite the file at the start of a run
+            
+            File.WriteAllText(logFilePath, "Episode,TotalReward,EnergyUsed,HeatUsed,PelletsCollected,CoolingPelletsCollected,EndReason\n");
+            
+
+            Debug.Log("Logging to: " + logFilePath);
+        
+    }
+
+
+    //Logging Methods
+    private void LogEpisodeData(string endReason)
+{
+    episodeCounter++;
+
+    // Calculate stats
+    float energyUsed = maxEnergy - currentEnergy;
+    float heatUsed = currentHeat; // Final heat at episode end
+    int pelletsCollected = pelletCount - spawnedPelletList.Count;
+    float totalReward = GetCumulativeReward();
+
+    // Create CSV line
+    string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{endReason}\n";
+
+    // Append to file
+    File.AppendAllText(logFilePath, logLine);
+}
+
+
+
+
+    public override void OnEpisodeBegin()
+    {
+
+        rb.velocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        actionDelaySteps = 2; // Delay actions for 2 FixedUpdate steps
+       
+
+    
+
+
+        //agent
+       
+        Vector3 pelletLocation = new Vector3(Random.Range(-11f, 11f), 0.45f, Random.Range(-11f, 11f)); // For 4x scale
+        transform.localPosition = new Vector3(Random.Range(-11f, 11f), 0.5f, Random.Range(-11f, 11f));
+
+
+     
+
+        CreatePellet();
+        CreateCoolingPellet();
+
+        currentEnergy = maxEnergy; // Reset energy
+        currentHeat = 0;
+        envMaterial.color = originalEnvColor;
+
+        
+
+
+
+    }
+
+    private void CreatePellet()
+    {
+
+        if (spawnedPelletList.Count !=0)
+        {
+            RemovePellet(spawnedPelletList);
+        }
+
+        for (int i = 0; i < pelletCount; i++)
+        {
+            GameObject newPellet = Instantiate(food);
+            //Make pellet child of env
+            newPellet.transform.parent = environmentLocation;
+            //Vector3 pelletLocation = new Vector3(Random.Range(-4f, 4f), 0.3f, Random.Range(-4f, 4f)); BEFORE SCALE
+            Vector3 pelletLocation = new Vector3(Random.Range(-11f, 11f), 0.45f, Random.Range(-11f, 11f));
+
+            //spawn in 
+            newPellet.transform.localPosition=pelletLocation;
+
+            spawnedPelletList.Add(newPellet);
+        }
+    }
+
+    //Level 3 Cooling pellet Create
+    private void CreateCoolingPellet()
+{
+    for (int i = 0; i < coolingPelletCount; i++)
+    {
+        GameObject newCoolingPellet = Instantiate(coolingPellet);
+        newCoolingPellet.transform.parent = environmentLocation;
+
+        Vector3 pelletLocation = new Vector3(
+            Random.Range(-11f, 11f),
+            0.45f,
+            Random.Range(-11f, 11f)
+        );
+
+        newCoolingPellet.transform.localPosition = pelletLocation;
+        spawnedPelletList.Add(newCoolingPellet);
+    }
+}
+
+    private void RemovePellet(List<GameObject> toBeDeleted)
+    {
+
+        foreach (GameObject i in toBeDeleted)
+        {
+            Destroy(i.gameObject);
+        }
+        toBeDeleted.Clear();
+    }
+
+    public override void CollectObservations(VectorSensor sensor)
+    {
+
+        // Observations
+        sensor.AddObservation(transform.localPosition);
+        sensor.AddObservation(currentEnergy / maxEnergy);
+        sensor.AddObservation(currentHeat / maxHeat);
+        sensor.AddObservation(rb.velocity);
+    }
+
+
+
+
+    public override void OnActionReceived(ActionBuffers actions)
+    {
+
+        AddReward(0.001f); //Incentive to Survive
+            // Skip movement for first few steps
+        if (actionDelaySteps > 0)
+        {
+        actionDelaySteps--;
+        return; // Skip applying movement this step fo for 2 steps not giving for tipping over.
+        }
+        
+        //Energy Management
+
+        currentEnergy -= energyDepletionRate * Time.fixedDeltaTime;
+
+
+        if (currentEnergy / maxEnergy < 0.3f)
+        {
+            AddReward(-0.005f); // Make this small so it doesn't discourage survival
+        }
+        if (currentEnergy <= 0f)
+        {
+            AddReward(-50f); // Same penalty as hitting a wall
+            RemovePellet(spawnedPelletList);
+            LogEpisodeData("EnergyDepleted");//LOGGED DATA
+            EndEpisode();
+        }
+
+        float moveRotate = actions.ContinuousActions[0];
+        float moveForward = actions.ContinuousActions[1];
+
+        
+        //transform.localPosition += velocity;
+        rb.MovePosition(transform.position + transform.forward * moveForward * moveSpeed * Time.deltaTime);
+        //transform.Rotate(0f, moveRotate * moveSpeed, 0f, Space.Self);  THIS WAS BEFORE THE SCALE CHANGE
+        transform.Rotate(0f, moveRotate * rotationSpeed * Time.deltaTime, 0f, Space.Self);
+
+         // Encourage movement slightly (prevents standing still)
+        if (Mathf.Abs(moveForward) > 0.05f || Mathf.Abs(moveRotate) > 0.05f)
+        {
+            AddReward(0.0005f); // tiny reward for moving
+        }
+
+
+        //Level 2 Heat Management
+        float speed = Mathf.Abs(moveForward) * moveSpeed;
+
+            if (speed > 1f)
+            {
+                // Heat increases with speed
+                currentHeat += heatIncreaseRate * speed * Time.fixedDeltaTime;
+            }
+            else
+            {
+                // Cooling when idle
+                currentHeat -= heatCooldownRate * Time.fixedDeltaTime;
+            }
+
+            
+            currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
+
+            // Small proportional penalty for high heat
+            AddReward(-(currentHeat / maxHeat) * 0.0005f);
+
+            // Small penalty for high heat
+            if (currentHeat / maxHeat > 0.8f)
+            {
+                AddReward(-.005f);
+            }
+
+            // Overheat check
+            if (currentHeat >= maxHeat)
+            {
+                AddReward(-50f);
+                RemovePellet(spawnedPelletList);
+                LogEpisodeData("Overheat");
+                EndEpisode();
+            }
+   
+
+
+
+
+
+    }
+
+    void Update()
+    {
+        // Make sure the reference is not empty to avoid errors
+        // "F1" formats the number to show only one decimal place
+        
+        if (energyText != null)
+        {
+            
+            energyText.text = "Energy: " + currentEnergy.ToString("F1");
+        }
+
+        if (heatText != null)
+        {
+            
+            heatText.text = "Heat: " + currentHeat.ToString("F1");
+        }
+
+        
+
+   
+    }
+
+    public override void Heuristic(in ActionBuffers actionsOut)
+    {
+        ActionSegment<float> continuousActions =actionsOut.ContinuousActions;
+        continuousActions[0]= Input.GetAxisRaw("Horizontal");
+        continuousActions[1] = Input.GetAxisRaw("Vertical");
+    }
+
+    // private void OnTriggerEnter(Collider other)
+    // {
+
+
+    //     if (other.gameObject.tag == "Pellet") 
+    // {
+
+    //         // Replenish energy
+    //         currentEnergy += energyPerPellet;
+    //         currentEnergy = Mathf.Clamp(currentEnergy, 0f, maxEnergy); // Don't let energy go over max
+
+    //         spawnedPelletList.Remove(other.gameObject);
+    //         Destroy(other.gameObject);
+    //         AddReward(15f);
+    //         //envMaterial.color = Color.green;
+
+
+    //         //LEVEL 2 MANAGEMENT 
+    //         currentHeat += heatIncreaseOnPellet;
+    //         currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
+
+    //     // End episode only if all normal pellets are collected
+    //         bool allNormalPelletsGone = true;
+    //         foreach (GameObject pellet in spawnedPelletList)
+    //     {
+    //             if (pellet != null && pellet.tag == "Pellet")
+    //         {
+    //                 allNormalPelletsGone = false;
+    //                 break;
+    //         }
+    //     }
+
+    //     if (allNormalPelletsGone)
+    //     {
+    //         RemovePellet(spawnedPelletList);
+    //         AddReward(50f);
+    //         LogEpisodeData("AllPelletsCollected");
+    //         EndEpisode();
+    //     }
+    // }
+    //     if (other.gameObject.tag == "Wall")
+    //     {
+    //         envMaterial.color =Color.red;
+    //         RemovePellet(spawnedPelletList);
+    //         AddReward(-50f);
+    //         LogEpisodeData("WallCollision");
+    //         EndEpisode();
+    //     }
+    // }
+
+    private void OnTriggerEnter(Collider other)
+{
+    if (other.gameObject.tag == "Pellet") 
+    {
+        // Replenish energy
+        currentEnergy += energyPerPellet;
+        currentEnergy = Mathf.Clamp(currentEnergy, 0f, maxEnergy);
+
+        spawnedPelletList.Remove(other.gameObject);
+        Destroy(other.gameObject);
+
+        AddReward(15f);
+
+        // LEVEL 2 MANAGEMENT
+        currentHeat += heatIncreaseOnPellet;
+        currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
+
+        // End episode only if all normal pellets are collected
+        bool allNormalPelletsGone = true;
+        foreach (GameObject pellet in spawnedPelletList)
+        {
+            if (pellet != null && pellet.tag == "Pellet")
+            {
+                allNormalPelletsGone = false;
+                break;
+            }
+        }
+
+        if (allNormalPelletsGone)
+        {
+            RemovePellet(spawnedPelletList);
+            AddReward(50f);
+            LogEpisodeData("AllPelletsCollected");
+            EndEpisode();
+        }
+    }
+
+    if (other.gameObject.tag == "coolingPellet")
+    {
+        // Reduce heat by 20
+        currentHeat -= 20f;
+        currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
+        coolingPelletsCollected++; //For logging
+        spawnedPelletList.Remove(other.gameObject);
+        Destroy(other.gameObject);
+
+        // Reward only if heat was above 50 before cooling
+        if (currentHeat >= 30f) 
+        {
+            AddReward(7f); 
+        }
+    }
+
+    if (other.gameObject.tag == "Wall")
+    {
+        envMaterial.color = Color.red;
+        RemovePellet(spawnedPelletList);
+        AddReward(-50f);
+        LogEpisodeData("WallCollision");
+        EndEpisode();
+    }
+}
+
+}
