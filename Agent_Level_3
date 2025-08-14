@@ -33,7 +33,7 @@ public class agent : Agent
     [Header("Energy Settings")]
     public float maxEnergy = 100f;
     public float energyPerPellet = 15f;
-    public float energyDepletionRate = 5f; // Energy lost per step is o.5 at stable lvl 2
+    public float energyDepletionRate = 3f; // Energy lost per step is o.5 at stable lvl 2
     private float currentEnergy;
 
     //STATS FOR THE UI 
@@ -97,8 +97,8 @@ public class agent : Agent
     float totalReward = GetCumulativeReward();
 
     // Create CSV line
-    string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{endReason}\n";
-
+  //string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{endReason}\n";
+    string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{coolingPelletsCollected},{endReason}\n";
     // Append to file
     File.AppendAllText(logFilePath, logLine);
 }
@@ -111,7 +111,7 @@ public class agent : Agent
 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
-        actionDelaySteps = 2; // Delay actions for 2 FixedUpdate steps
+        actionDelaySteps = 5; // Delay actions for 5 FixedUpdate steps
        
 
     
@@ -206,13 +206,18 @@ public class agent : Agent
     public override void OnActionReceived(ActionBuffers actions)
     {
 
-        AddReward(0.001f); //Incentive to Survive
+        //AddReward(0.001f); //Incentive to Survive Removed for Level 3 training
+            
+            
             // Skip movement for first few steps
         if (actionDelaySteps > 0)
         {
         actionDelaySteps--;
         return; // Skip applying movement this step fo for 2 steps not giving for tipping over.
         }
+
+        //Encourage Quick Finish
+        AddReward(-0.0005f);
         
         //Energy Management
 
@@ -225,7 +230,7 @@ public class agent : Agent
         }
         if (currentEnergy <= 0f)
         {
-            AddReward(-50f); // Same penalty as hitting a wall
+            AddReward(-100f); // Same penalty as hitting a wall
             RemovePellet(spawnedPelletList);
             LogEpisodeData("EnergyDepleted");//LOGGED DATA
             EndEpisode();
@@ -237,20 +242,26 @@ public class agent : Agent
         
         //transform.localPosition += velocity;
         rb.MovePosition(transform.position + transform.forward * moveForward * moveSpeed * Time.deltaTime);
-        //transform.Rotate(0f, moveRotate * moveSpeed, 0f, Space.Self);  THIS WAS BEFORE THE SCALE CHANGE
+        
         transform.Rotate(0f, moveRotate * rotationSpeed * Time.deltaTime, 0f, Space.Self);
 
+        //Removed to see if it helps with jitters 
+        
          // Encourage movement slightly (prevents standing still)
-        if (Mathf.Abs(moveForward) > 0.05f || Mathf.Abs(moveRotate) > 0.05f)
-        {
-            AddReward(0.0005f); // tiny reward for moving
-        }
+        // if (Mathf.Abs(moveForward) > 0.05f || Mathf.Abs(moveRotate) > 0.05f)
+        // {
+        //     AddReward(0.0005f); // tiny reward for moving
+        // }
+
+        
 
 
         //Level 2 Heat Management
-        float speed = Mathf.Abs(moveForward) * moveSpeed;
+            float speed = Mathf.Abs(moveForward) * moveSpeed;
+            float heatBefore = currentHeat;
 
-            if (speed > 1f)
+
+            if (speed > 4f) 
             {
                 // Heat increases with speed
                 currentHeat += heatIncreaseRate * speed * Time.fixedDeltaTime;
@@ -270,13 +281,13 @@ public class agent : Agent
             // Small penalty for high heat
             if (currentHeat / maxHeat > 0.8f)
             {
-                AddReward(-.005f);
+                AddReward(-.05f);
             }
 
             // Overheat check
             if (currentHeat >= maxHeat)
             {
-                AddReward(-50f);
+                AddReward(-100f);
                 RemovePellet(spawnedPelletList);
                 LogEpisodeData("Overheat");
                 EndEpisode();
@@ -318,56 +329,7 @@ public class agent : Agent
         continuousActions[1] = Input.GetAxisRaw("Vertical");
     }
 
-    // private void OnTriggerEnter(Collider other)
-    // {
-
-
-    //     if (other.gameObject.tag == "Pellet") 
-    // {
-
-    //         // Replenish energy
-    //         currentEnergy += energyPerPellet;
-    //         currentEnergy = Mathf.Clamp(currentEnergy, 0f, maxEnergy); // Don't let energy go over max
-
-    //         spawnedPelletList.Remove(other.gameObject);
-    //         Destroy(other.gameObject);
-    //         AddReward(15f);
-    //         //envMaterial.color = Color.green;
-
-
-    //         //LEVEL 2 MANAGEMENT 
-    //         currentHeat += heatIncreaseOnPellet;
-    //         currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
-
-    //     // End episode only if all normal pellets are collected
-    //         bool allNormalPelletsGone = true;
-    //         foreach (GameObject pellet in spawnedPelletList)
-    //     {
-    //             if (pellet != null && pellet.tag == "Pellet")
-    //         {
-    //                 allNormalPelletsGone = false;
-    //                 break;
-    //         }
-    //     }
-
-    //     if (allNormalPelletsGone)
-    //     {
-    //         RemovePellet(spawnedPelletList);
-    //         AddReward(50f);
-    //         LogEpisodeData("AllPelletsCollected");
-    //         EndEpisode();
-    //     }
-    // }
-    //     if (other.gameObject.tag == "Wall")
-    //     {
-    //         envMaterial.color =Color.red;
-    //         RemovePellet(spawnedPelletList);
-    //         AddReward(-50f);
-    //         LogEpisodeData("WallCollision");
-    //         EndEpisode();
-    //     }
-    // }
-
+    
     private void OnTriggerEnter(Collider other)
 {
     if (other.gameObject.tag == "Pellet") 
@@ -379,7 +341,7 @@ public class agent : Agent
         spawnedPelletList.Remove(other.gameObject);
         Destroy(other.gameObject);
 
-        AddReward(15f);
+        AddReward(10f); //Changed from 15F as the agent was sometimes dying in over heat
 
         // LEVEL 2 MANAGEMENT
         currentHeat += heatIncreaseOnPellet;
@@ -408,6 +370,7 @@ public class agent : Agent
     if (other.gameObject.tag == "coolingPellet")
     {
         // Reduce heat by 20
+        float heatBefore = currentHeat;
         currentHeat -= 20f;
         currentHeat = Mathf.Clamp(currentHeat, 0f, maxHeat);
         coolingPelletsCollected++; //For logging
@@ -415,17 +378,21 @@ public class agent : Agent
         Destroy(other.gameObject);
 
         // Reward only if heat was above 50 before cooling
-        if (currentHeat >= 30f) 
+        if (heatBefore>=50) 
         {
-            AddReward(7f); 
+            AddReward(6f); 
         }
+         else if (heatBefore <= 30)
+    {
+        AddReward(-3f); // Wasteful use penalty
+    }
     }
 
     if (other.gameObject.tag == "Wall")
     {
         envMaterial.color = Color.red;
         RemovePellet(spawnedPelletList);
-        AddReward(-50f);
+        AddReward(-100f);
         LogEpisodeData("WallCollision");
         EndEpisode();
     }
