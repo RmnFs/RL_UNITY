@@ -30,6 +30,10 @@ public class agent : Agent
 
     private Rigidbody rb;
 
+    [Header("Test Mode Settings")]
+    public int maxTestEpisodes = 100; // How many episodes to run
+    private int testEpisodeCounter = 0;
+
     [Header("Energy Settings")]
     public float maxEnergy = 100f;
     public float energyPerPellet = 15f;
@@ -41,7 +45,7 @@ public class agent : Agent
     public TextMeshProUGUI energyText;
     public TextMeshProUGUI heatText;
 
-    //Variables for Level 2_____________________________________
+    //Variables for Level 2
     [Header("Heat Settings")]
     public float maxHeat = 100f;
     public float heatIncreaseRate = 0.4f; // per unit speed per second was 0.1
@@ -57,7 +61,10 @@ public class agent : Agent
 
     public override void Initialize()
     {
+        // Speed up simulation for testing
+        Time.timeScale = 50f; // 20x faster than real-time
         rb = GetComponent<Rigidbody>();
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         envMaterial = env.GetComponent<Renderer>().material;
         originalEnvColor = envMaterial.color;
 
@@ -97,7 +104,7 @@ public class agent : Agent
     float totalReward = GetCumulativeReward();
 
     // Create CSV line
-  //string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{endReason}\n";
+ 
     string logLine = $"{episodeCounter},{totalReward},{energyUsed},{heatUsed},{pelletsCollected},{coolingPelletsCollected},{endReason}\n";
     // Append to file
     File.AppendAllText(logFilePath, logLine);
@@ -108,10 +115,21 @@ public class agent : Agent
 
     public override void OnEpisodeBegin()
     {
+        //TESTING 
+        
+        #if UNITY_EDITOR
+        // Count episodes and stop after maxTestEpisodes
+        testEpisodeCounter++;
+        if (testEpisodeCounter > maxTestEpisodes)
+        {
+            UnityEditor.EditorApplication.isPlaying = false; // Stop Play mode in Editor
+        }
+        #endif
 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         actionDelaySteps = 5; // Delay actions for 5 FixedUpdate steps
+        coolingPelletsCollected = 0;
        
 
     
@@ -206,14 +224,14 @@ public class agent : Agent
     public override void OnActionReceived(ActionBuffers actions)
     {
 
-        //AddReward(0.001f); //Incentive to Survive Removed for Level 3 training
+        
             
             
-            // Skip movement for first few steps
+        // Skip movement for first few steps fro avoiding tipping over
         if (actionDelaySteps > 0)
         {
         actionDelaySteps--;
-        return; // Skip applying movement this step fo for 2 steps not giving for tipping over.
+        return; 
         }
 
         //Encourage Quick Finish
@@ -226,7 +244,7 @@ public class agent : Agent
 
         if (currentEnergy / maxEnergy < 0.3f)
         {
-            AddReward(-0.005f); // Make this small so it doesn't discourage survival
+            AddReward(-0.005f); // Made this small so it doesn't discourage survival
         }
         if (currentEnergy <= 0f)
         {
@@ -245,13 +263,6 @@ public class agent : Agent
         
         transform.Rotate(0f, moveRotate * rotationSpeed * Time.deltaTime, 0f, Space.Self);
 
-        //Removed to see if it helps with jitters 
-        
-         // Encourage movement slightly (prevents standing still)
-        // if (Mathf.Abs(moveForward) > 0.05f || Mathf.Abs(moveRotate) > 0.05f)
-        // {
-        //     AddReward(0.0005f); // tiny reward for moving
-        // }
 
         
 
@@ -268,7 +279,7 @@ public class agent : Agent
             }
             else
             {
-                // Cooling when idle
+                // Cooling when idle/slow
                 currentHeat -= heatCooldownRate * Time.fixedDeltaTime;
             }
 
@@ -341,7 +352,9 @@ public class agent : Agent
         spawnedPelletList.Remove(other.gameObject);
         Destroy(other.gameObject);
 
-        AddReward(10f); //Changed from 15F as the agent was sometimes dying in over heat
+        
+        AddReward(15f); 
+        
 
         // LEVEL 2 MANAGEMENT
         currentHeat += heatIncreaseOnPellet;
@@ -361,7 +374,7 @@ public class agent : Agent
         if (allNormalPelletsGone)
         {
             RemovePellet(spawnedPelletList);
-            AddReward(50f);
+            AddReward(80f);
             LogEpisodeData("AllPelletsCollected");
             EndEpisode();
         }
@@ -383,9 +396,17 @@ public class agent : Agent
             AddReward(6f); 
         }
          else if (heatBefore <= 30)
-    {
-        AddReward(-3f); // Wasteful use penalty
-    }
+        {
+        AddReward(-1); // Wasteful use PENALTY
+        }
+        
+        
+        // float efficiency = heatBefore / maxHeat; // 0 to 1
+        // float reward = 2f + (efficiency * 4f); // 2f to 6f range
+        // AddReward(reward);
+    
+    
+    
     }
 
     if (other.gameObject.tag == "Wall")
@@ -394,6 +415,15 @@ public class agent : Agent
         RemovePellet(spawnedPelletList);
         AddReward(-100f);
         LogEpisodeData("WallCollision");
+        EndEpisode();
+    }
+
+    if (other.gameObject.tag == "MovingWall")
+    {
+        envMaterial.color = Color.red;
+        RemovePellet(spawnedPelletList);
+        AddReward(-75f);
+        LogEpisodeData("ObstacleCollision");
         EndEpisode();
     }
 }
