@@ -1,0 +1,37 @@
+using UnityEngine;
+
+public class MovingObstacle : MonoBehaviour
+{
+    // End–points expressed RELATIVE to the obstacle’s parent
+    [Tooltip("Local offset for the left / first end-point")]
+    public Vector3 localPointA = new Vector3(-20f, 0f, 0f);
+
+    [Tooltip("Local offset for the right / second end-point")]
+    public Vector3 localPointB = new Vector3( 20f, 0f, 0f);
+
+    public float speed = 5f;
+
+    private Vector3 currentTarget;    // which local point we are heading toward
+
+    void Start()
+    {
+        // Start by moving toward B
+        currentTarget = localPointB;
+    }
+
+    void Update()
+    {
+        // Move in LOCAL space
+        transform.localPosition = Vector3.MoveTowards(
+            transform.localPosition,
+            currentTarget,
+            speed * Time.deltaTime
+        );
+
+        // Switch target when we arrive (use sqrMagnitude to avoid sqrt cost)
+        if ((transform.localPosition - currentTarget).sqrMagnitude < 0.0001f)
+        {
+            currentTarget = (currentTarget == localPointA) ? localPointB : localPointA;
+        }
+    }
+}
