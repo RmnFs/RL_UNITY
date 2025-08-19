@@ -31,7 +31,7 @@ public class agent : Agent
     private Rigidbody rb;
 
     [Header("Test Mode Settings")]
-    public int maxTestEpisodes = 100; // How many episodes to run
+    public int maxTestEpisodes = 500; // How many episodes to run
     private int testEpisodeCounter = 0;
 
     [Header("Energy Settings")]
@@ -62,7 +62,7 @@ public class agent : Agent
     public override void Initialize()
     {
         // Speed up simulation for testing
-        Time.timeScale = 50f; // 20x faster than real-time
+        Time.timeScale = 2f; // 20x faster than real-time
         rb = GetComponent<Rigidbody>();
         rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         envMaterial = env.GetComponent<Renderer>().material;
@@ -353,7 +353,7 @@ public class agent : Agent
         Destroy(other.gameObject);
 
         
-        AddReward(15f); 
+        AddReward(20f); 
         
 
         // LEVEL 2 MANAGEMENT
@@ -374,7 +374,7 @@ public class agent : Agent
         if (allNormalPelletsGone)
         {
             RemovePellet(spawnedPelletList);
-            AddReward(80f);
+            AddReward(100f);
             LogEpisodeData("AllPelletsCollected");
             EndEpisode();
         }
