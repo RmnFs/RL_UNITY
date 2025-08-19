@@ -59,6 +59,16 @@ public class agent : Agent
     private int episodeCounter = 0; 
 
 
+    //LEVEL 4 After run 8
+    
+    [Header("Level 4 Settings")]
+    [SerializeField] private Transform movingObstacle;
+    private Rigidbody movingObstacleRb;
+
+
+    
+
+
     public override void Initialize()
     {
         // Speed up simulation for testing
@@ -67,6 +77,10 @@ public class agent : Agent
         rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         envMaterial = env.GetComponent<Renderer>().material;
         originalEnvColor = envMaterial.color;
+
+        //Run 8 L4
+        rb = GetComponent<Rigidbody>();
+        movingObstacleRb = movingObstacle.GetComponent<Rigidbody>(); 
 
         //Logging Data
                     
@@ -216,6 +230,77 @@ public class agent : Agent
         sensor.AddObservation(currentEnergy / maxEnergy);
         sensor.AddObservation(currentHeat / maxHeat);
         sensor.AddObservation(rb.velocity);
+
+        Vector3 nearestPelletDir = Vector3.zero;
+    float nearestPelletDist = float.MaxValue;
+
+    foreach (GameObject pellet in spawnedPelletList)
+    {
+        if (pellet != null && pellet.CompareTag("Pellet"))
+        {
+            float dist = Vector3.Distance(transform.localPosition, pellet.transform.localPosition);
+            if (dist < nearestPelletDist)
+            {
+                nearestPelletDist = dist;
+                nearestPelletDir = pellet.transform.localPosition - transform.localPosition;
+            }
+        }
+    }
+
+    if (nearestPelletDist < float.MaxValue)
+    {
+        sensor.AddObservation(nearestPelletDir.normalized); // 3 values (x,y,z)
+        sensor.AddObservation(nearestPelletDist / 30f);     // 1 value (normalized distance)
+    }
+    else
+    {
+        sensor.AddObservation(Vector3.zero); // no direction
+        sensor.AddObservation(0f);           // no distance
+    }
+
+    // 🔹 Nearest cooling pellet (direction + distance)
+    Vector3 nearestCoolingDir = Vector3.zero;
+    float nearestCoolingDist = float.MaxValue;
+
+    foreach (GameObject pellet in spawnedPelletList)
+    {
+        if (pellet != null && pellet.CompareTag("coolingPellet"))
+        {
+            float dist = Vector3.Distance(transform.localPosition, pellet.transform.localPosition);
+            if (dist < nearestCoolingDist)
+            {
+                nearestCoolingDist = dist;
+                nearestCoolingDir = pellet.transform.localPosition - transform.localPosition;
+            }
+        }
+    }
+
+    if (nearestCoolingDist < float.MaxValue)
+    {
+        sensor.AddObservation(nearestCoolingDir.normalized); // 3 values (x,y,z)
+        sensor.AddObservation(nearestCoolingDist / 30f);     // 1 value (normalized distance)
+    }
+    else
+    {
+        sensor.AddObservation(Vector3.zero); // no direction
+        sensor.AddObservation(0f);           // no distance
+    }
+
+    //LEvel 8 L4
+    if (movingObstacle != null)
+    {
+        // Add the obstacle's position relative to the agent
+        sensor.AddObservation(movingObstacle.localPosition);
+
+        // Add the obstacle's velocity
+        sensor.AddObservation(movingObstacleRb.velocity);
+    }
+    else // Fallback if obstacle is missing
+    {
+        sensor.AddObservation(Vector3.zero);
+        sensor.AddObservation(Vector3.zero);
+    }
+        
     }
 
 
@@ -248,7 +333,7 @@ public class agent : Agent
         }
         if (currentEnergy <= 0f)
         {
-            AddReward(-100f); // Same penalty as hitting a wall
+            AddReward(-180f); // Total reward possible: 6*20 + 3*15 = 165, so death penalty ~180
             RemovePellet(spawnedPelletList);
             LogEpisodeData("EnergyDepleted");//LOGGED DATA
             EndEpisode();
@@ -298,7 +383,7 @@ public class agent : Agent
             // Overheat check
             if (currentHeat >= maxHeat)
             {
-                AddReward(-100f);
+                AddReward(-180f); // Same as energy depletion penalty
                 RemovePellet(spawnedPelletList);
                 LogEpisodeData("Overheat");
                 EndEpisode();
@@ -390,21 +475,10 @@ public class agent : Agent
         spawnedPelletList.Remove(other.gameObject);
         Destroy(other.gameObject);
 
-        // Reward only if heat was above 50 before cooling
-        if (heatBefore>=50) 
-        {
-            AddReward(6f); 
-        }
-         else if (heatBefore <= 30)
-        {
-        AddReward(-1); // Wasteful use PENALTY
-        }
-        
-        
-        // float efficiency = heatBefore / maxHeat; // 0 to 1
-        // float reward = 2f + (efficiency * 4f); // 2f to 6f range
-        // AddReward(reward);
-    
+        // Gradient reward system: 5-20 based on heat level
+        float heatRatio = heatBefore / maxHeat; // 0 to 1
+        float reward = 5f + (heatRatio * 15f); // 5f to 20f range
+        AddReward(reward);
     
     
     }
@@ -413,7 +487,7 @@ public class agent : Agent
     {
         envMaterial.color = Color.red;
         RemovePellet(spawnedPelletList);
-        AddReward(-100f);
+        AddReward(-180f); // Same as overheat/starvation penalty
         LogEpisodeData("WallCollision");
         EndEpisode();
     }
@@ -422,7 +496,7 @@ public class agent : Agent
     {
         envMaterial.color = Color.red;
         RemovePellet(spawnedPelletList);
-        AddReward(-75f);
+        AddReward(-180f);
         LogEpisodeData("ObstacleCollision");
         EndEpisode();
     }
