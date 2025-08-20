@@ -9,6 +9,8 @@ using TMPro;
 using System.IO; // For file writing
 
 
+
+
 public class agent : Agent
 {
     [SerializeField] private Transform target;
@@ -66,7 +68,7 @@ public class agent : Agent
     private Rigidbody movingObstacleRb;
 
 
-    
+ 
 
 
     public override void Initialize()
@@ -131,19 +133,21 @@ public class agent : Agent
     {
         //TESTING 
         
-        #if UNITY_EDITOR
-        // Count episodes and stop after maxTestEpisodes
-        testEpisodeCounter++;
-        if (testEpisodeCounter > maxTestEpisodes)
-        {
-            UnityEditor.EditorApplication.isPlaying = false; // Stop Play mode in Editor
-        }
-        #endif
+        // #if UNITY_EDITOR
+        // // Count episodes and stop after maxTestEpisodes
+        // testEpisodeCounter++;
+        // if (testEpisodeCounter > maxTestEpisodes)
+        // {
+        //     UnityEditor.EditorApplication.isPlaying = false; // Stop Play mode in Editor
+        // }
+        // #endif
 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
         actionDelaySteps = 5; // Delay actions for 5 FixedUpdate steps
         coolingPelletsCollected = 0;
+
+       
        
 
     
