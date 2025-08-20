@@ -1,7 +1,16 @@
 using UnityEngine;
+using Unity.MLAgents;
+
+
 
 public class MovingObstacle : MonoBehaviour
 {
+
+
+    [Header("Curriculum")]
+    public float defaultObstacleSpeed = 2f;
+    private float obstacleSpeed;
+
     // End–points expressed RELATIVE to the obstacle’s parent
     [Tooltip("Local offset for the left / first end-point")]
     public Vector3 localPointA = new Vector3(-20f, 0f, 0f);
@@ -9,7 +18,7 @@ public class MovingObstacle : MonoBehaviour
     [Tooltip("Local offset for the right / second end-point")]
     public Vector3 localPointB = new Vector3( 20f, 0f, 0f);
 
-    public float speed = 5f;
+    public float speed = 2f;
 
     private Vector3 currentTarget;    // which local point we are heading toward
 
@@ -17,6 +26,8 @@ public class MovingObstacle : MonoBehaviour
     {
         // Start by moving toward B
         currentTarget = localPointB;
+        obstacleSpeed = Academy.Instance.EnvironmentParameters.GetWithDefault("OBSTACLE_SPEED", defaultObstacleSpeed);
+        
     }
 
     void Update()
