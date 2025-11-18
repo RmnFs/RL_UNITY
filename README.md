@@ -1,7 +1,7 @@
 
 # Reinforcement Learning Survival Agent in Unity  
 
-This repository contains the project files and implementation for a Bachelor's thesis exploring **Reinforcement Learning (RL)** using the **Unity ML‑Agents Toolkit**.  
+This repository contains the project files and implementation for **Reinforcement Learning (RL)** agent using the **Unity ML‑Agents Toolkit**.  
 The project focuses on developing an RL agent capable of surviving in a progressively complex environment through **reward shaping** and **curriculum learning**.
 
 ---
